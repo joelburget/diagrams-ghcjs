@@ -18,7 +18,7 @@ module Graphics.Rendering.GHCJS
   , fillRule
   , fillText
   , strokeText
-  , transform
+  , setTransform
   , save
   , restore
   , translate
@@ -33,6 +33,7 @@ module Graphics.Rendering.GHCJS
   , lineJoin
   , globalAlpha
   , withStyle
+  , tempState
   ) where
 
 import           Control.Monad.Reader
@@ -41,7 +42,7 @@ import           Data.Colour
 import           Data.Colour.SRGB.Linear
 import           Data.NumInstances       ()
 import           Data.Maybe
-import           Data.Text               (Text)
+import           Data.Text               (Text, unpack)
 import           Diagrams.Attributes     (Color (..), Dashing (..),
                                           LineCap (..), LineJoin (..),
                                           colorToRGBA)
@@ -99,7 +100,8 @@ relLineTo x y = do
   ctx (C.lineTo x' y')
   move p'
 
-relCurveTo :: Double -> Double -> Double -> Double -> Double -> Double -> Render ()
+relCurveTo :: Double -> Double -> Double -> Double -> Double -> Double
+           -> Render ()
 relCurveTo ax ay bx by cx cy = do
   p <- at
   let [(ax',ay'),(bx',by'),(cx',cy')] = map (p+) [(ax,ay),(bx,by),(cx,cy)]
@@ -108,17 +110,13 @@ relCurveTo ax ay bx by cx cy = do
 
 fillText :: Text -> Render ()
 fillText txt = do
-    save
-    ctx (C.setTransform 1 0 0 1 0 0)
-    setFont "10px Arial"
-    (x,y) <- at
-    ctx (C.fillText txt x y)
-    restore
+    liftIO $ putStrLn $ unpack txt
+    -- (x, y) <- at
+    -- ctx (C.fillText txt x y)
+    ctx (C.fillText txt 0 0)
 
 strokeText :: Text -> Render ()
-strokeText txt = do
-    (x,y) <- at
-    ctx (C.strokeText txt x y)
+strokeText txt = ctx (C.strokeText txt 0 0)
 
 stroke :: Render ()
 stroke = ctx C.stroke
@@ -136,6 +134,9 @@ save = ctx C.save
 restore :: Render ()
 restore = ctx C.restore
 
+tempState :: Render () -> Render ()
+tempState r = save >> r >> restore
+
 colorToJSRGBA :: Color c => c -> (Int, Int, Int, Double)
 colorToJSRGBA c = (f r, f g, f b, alphaChannel c')
   where
@@ -152,8 +153,9 @@ colorToJSRGBA c = (f r, f g, f b, alphaChannel c')
    alphaToColour ac | alphaChannel ac == 0 = ac `over` black
                     | otherwise = darken (recip (alphaChannel ac)) (ac `over` black)
 
-transform :: Double -> Double -> Double -> Double -> Double -> Double -> Render ()
-transform ax ay bx by tx ty = ctx (C.transform ax ay bx by tx ty)
+setTransform :: Double -> Double -> Double -> Double -> Double -> Double
+             -> Render ()
+setTransform ax ay bx by tx ty = ctx (C.setTransform ax ay bx by tx ty)
 
 strokeColor :: (Color c) => c -> Render ()
 strokeColor c = ctx (C.strokeStyle r g b a)
@@ -167,8 +169,8 @@ fillColor c = ctx (C.fillStyle r g b a)
   where (r,g,b,a) = colorToJSRGBA c
 
 dashing :: Dashing -> Render ()
-dashing (Dashing a o) =  ctx (C.setLineDash a)
-                      >> ctx (C.lineDashOffset o)
+dashing (Dashing a o) = ctx (C.setLineDash a)
+                     >> ctx (C.lineDashOffset o)
 
 lineWidth :: Double -> Render ()
 lineWidth w | abs w < 0.00001 = ctx (C.lineWidth 0.00001)
@@ -201,11 +203,8 @@ rotate :: Double -> Render ()
 rotate t = ctx (C.rotate t)
 
 withStyle :: Render () -> Render () -> Render Bool -> Render ()
-withStyle t s r = do
-  ctx C.save
+withStyle t s r = tempState $ do
   ignoreFill <- r
   t >> s
   stroke
   unless ignoreFill fill
-  ctx C.restore
-

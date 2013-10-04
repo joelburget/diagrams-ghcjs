@@ -18,11 +18,12 @@ module Diagrams.Backend.GHCJS
 import           Control.Monad        (when)
 import qualified Data.Foldable        as F
 import           Data.Maybe           (catMaybes, maybe)
+import           Data.Monoid          ((<>))
 import           Data.Typeable
 import qualified Data.Text            as T
 import           Control.Monad.Reader
 
-import           Diagrams.Prelude
+import           Diagrams.Prelude     hiding ((<>))
 import           Diagrams.TwoD.Adjust (adjustDia2D)
 import           Diagrams.TwoD.Path   (getFillRule, getClip, Clip)
 import           Diagrams.TwoD.Text   (getFont, getFontSize)
@@ -33,14 +34,15 @@ import qualified Graphics.Rendering.GHCJS as G
 
 import Debug.Trace
 
--- | This data declaration is simply used as a token to distinguish this rendering engine.
-data Canvas = Canvas
-            deriving Typeable
+-- | This data declaration is simply used as a token to distinguish this
+-- rendering engine.
+data Canvas = Canvas deriving Typeable
 
 instance Monoid (Render Canvas R2) where
   mempty  = C $ return defRenderInfo
   (C c1) `mappend` (C c2) = C (c1 >> c2)
 
+-- | Skip filling after drawing this subdiagram?
 data RenderInfo = I { getIgnoreFill :: Bool }
 
 defRenderInfo :: RenderInfo
@@ -93,12 +95,30 @@ canvasStyle s = foldr (>>) (return ())
         dashing_ = G.dashing     . getDashing
         handleFont = let fontFamily' = getAttr s :: Maybe (D.Font)
                          fontSize'   = getAttr s :: Maybe (D.FontSize)
+                         fontSlant'  = getAttr s :: Maybe (D.FontSlantA)
+                         fontWeight' = getAttr s :: Maybe (D.FontWeightA)
                          fontFamily  = maybe "Arial" getFont fontFamily'
                          fontSize    = maybe 10 getFontSize fontSize'
-                     in Just $ G.setFont $
-                        T.pack (show fontSize)
-                        `T.append` "px "
-                        `T.append` (T.pack fontFamily)
+                         fontSlant   = maybe D.FontSlantNormal D.getFontSlant fontSlant'
+                         fontWeight  = maybe D.FontWeightNormal D.getFontWeight fontWeight'
+                     in Just $ G.setFont $ dbg $
+                        slantToCss fontSlant
+                        <> weightToCss fontWeight
+                        <> T.pack (show fontSize)
+                        <> "px "
+                        <> (T.pack fontFamily)
+
+slantToCss :: D.FontSlant -> T.Text
+slantToCss D.FontSlantNormal = "" -- " normal "
+slantToCss D.FontSlantItalic = " italic "
+slantToCss D.FontSlantOblique = " oblique "
+
+weightToCss :: D.FontWeight -> T.Text
+weightToCss D.FontWeightNormal = "" -- " normal "
+weightToCss D.FontWeightBold = " bold "
+
+dbg :: Show a => a -> a
+dbg x = traceShow x x
 
 handleClipping :: Maybe Clip -> G.Render ()
 handleClipping Nothing  = return ()
@@ -112,12 +132,12 @@ renderPath (Path trs) = G.newPath >> F.mapM_ renderTrail trs
 
 canvasTransf :: Transformation R2 -> G.Render ()
 canvasTransf t = do
-    traceM $ show (a1,a2,b1,b2,c1,c2)
-    G.transform a1 a2 b1 b2 c1 c2
+    G.setTransform a1 a2 b1 b2 c1 c2
   where
     (a1,a2,b1,b2,c1,c2) = getMatrix t
 
-getMatrix :: Transformation R2 -> (Double, Double, Double, Double, Double, Double)
+getMatrix :: Transformation R2
+          -> (Double, Double, Double, Double, Double, Double)
 getMatrix t = (a1,a2,b1,b2,c1,c2)
  where
   (unr2 -> (a1,a2)) = apply t unitX
@@ -132,17 +152,19 @@ instance Renderable (Trail R2) Canvas where
     render c = render c . pathFromTrail
 
 instance Renderable (Path R2) Canvas where
-  render _ p@(Path trs) = C $ do
-      renderPath p
-      if any (isLine . unLoc) trs
-          then return $ I True
-          else return defRenderInfo
+    render _ p@(Path trs) = C $ do
+        renderPath p
+        return $ I $ any (isLine . unLoc) trs
 
 instance Renderable D.Text Canvas where
     render _ (D.Text tt a s) = C $ do
-        G.transform a1 a2 b1 b2 c1 c2
-        G.fillText (T.pack s)
-        return $ I True
+        liftIO $ print $ getMatrix $ tt
+        liftIO $ print $ getMatrix $ reflectionY
+        liftIO $ print $ getMatrix $ tt <> reflectionY
+        G.tempState $ do
+            G.setTransform a1 a2 b1 b2 c1 c2
+            G.fillText (T.pack s)
+        return $ I False
       where
         (a1,a2,b1,b2,c1,c2) = getMatrix (tt <> reflectionY)
 

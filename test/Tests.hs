@@ -12,7 +12,7 @@ module Tests
 import           Data.Typeable
 import           Diagrams.Coordinates ((&))
 import           Diagrams.Core.Points
-import           Diagrams.Prelude
+import           Diagrams.Prelude hiding (connect)
 import           Diagrams.TwoD.Text
 
 -----------------------------------------------------------------------
@@ -31,7 +31,7 @@ data Test = Test
 -- ^ list of cannonical examples.
 examples :: [Test]
 examples =
-        [ Test "square1" $ square 1
+        [ {-Test "square1" $ square 1
         , Test "circle1" $ circle 1
         , Test "circle-square" $
                 circle 1 ||| square 1
@@ -86,9 +86,10 @@ examples =
                   , dashing [0.1,0.2,0.3,0.1] 0
                   ]
 
-        , Test "text-basic" $
+        ,-} Test "text-basic" $
                text "Hello world!" <> rect 8 1
 
+        {-
         , Test "text-alignment" $
                let pt = circle 0.1 # fc red
 
@@ -168,6 +169,7 @@ examples =
                <>
                trailLike ((fromVertices [origin, 0 & 2, 3 & 3, 4 & 1] # wrapLine) `at` origin)
 
+        -}
         ]
 
 poly_example = (poly1 ||| strutX 1 ||| poly2) # lw 0.05
