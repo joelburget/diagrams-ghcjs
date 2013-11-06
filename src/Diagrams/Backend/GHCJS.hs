@@ -80,7 +80,7 @@ renderC a = case (render Canvas a) of C r -> r
 
 canvasMiscStyle :: Style v -> G.Render ()
 canvasMiscStyle s = sequence_ $ catMaybes
-    [ handleClipping s
+    [ handle (mapM_ (\p -> renderC p >> G.clip) . getClip)
     , handleFont s
     , handle fColor
     , handle fRule
@@ -105,9 +105,6 @@ handleFont s = Just $ G.setFont $
         fontSize    = maybe 10 getFontSize fontSize'
         fontSlant   = maybe D.FontSlantNormal D.getFontSlant fontSlant'
         fontWeight  = maybe D.FontWeightNormal D.getFontWeight fontWeight'
-
-handleClipping :: Style v -> Maybe (G.Render ())
-handleClipping s = (clipCanv . getClip) `fmap` getAttr s
 
 canvasStyle :: Bool -> Style v -> G.Render ()
 canvasStyle ignoreFill s = foldr (>>) (return ()) . catMaybes $
